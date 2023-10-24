@@ -1,0 +1,160 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Sahil Sharma"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. Introduction
+
+This course project utilises tidyverse tool set to execute various tasks; hence, it follows a streamlines process of modelling. The project is divided into four stages i.e., data import, data wrangling, data modelling, and results.
+
+## 2. Data Import
+
+First of all, the datasets "pml-testing.csv" and "pml-training.csv" must be available in working directory in order to execute the same code on any other machine. Also, we will load "readr" library from tidyverse collection of data science libraries.
+
+```{r results='hide', message=TRUE, warning=FALSE}
+        library(readr)
+
+        training <- read_csv("pml-training.csv")
+        testing <- read_csv("pml-testing.csv") 
+```
+
+## 3. Data Wrangling
+
+Data wrangling refers to cleaning or transforming the data into appropriate format for machine learning. This stage is involves series of tasks that we will go one-by-one.
+
+Firstly we will convert the data object into a tidy object using as_tibble function from tidyr.
+
+```{r}
+        library(tidyr)
+        
+        training <- as_tibble(training)
+        testing <- as_tibble(testing)
+```
+
+Secondly, we will see a glimpse of our dataset using skimr.
+
+```{r}
+
+library(skimr)
+        
+        training %>%
+                skim()
+```
+
+As we see, this is a very big dataset and there are too many variables. However, we're only interested in accelerometer data. All variable starting with accel\_ are related to accelerometer data. So, we need select only these variable and our outcome variable classe in further analysis of this project.
+
+Using stringer we will create a list of variables that start with accel prefix, as accel_names.
+
+```{r}
+        
+        library(stringr)
+        
+        names <- names(training)
+        accel_names <- str_subset(names, "^accel")
+        
+```
+
+Now using dplyr the accel_names string will be used to sub-set variables related to accelerometers on the belt, forearm, arm, and dumbbell.Also we will select the classe as our outcome variable and the new dataset is named as clean_data.
+
+```{r warning=FALSE, message=FALSE}
+        library(dplyr)
+        
+        clean_data <- training %>%
+                select(accel_names, classe)
+```
+
+Let see how our new cleaned dataset looks like.
+
+```{r}
+        clean_data %>%
+                skim()
+```
+
+Finally, the data looks tidy and we have all the required variables. The next now is to use this data to model.
+
+## 4. Modelling
+
+Modelling stage refers to applying machin learning or other statistical models to data. Our objective in this project was to create a prediction model. As our outcome variable is a distinct class variable so we need to use a classification algorithm. We first tried to use decision tree but due to lack of accuracy the random forest algorithm was adopted.
+
+Modelling stage involves various steps such as data splitting, recipe, workflows, model specification, fit, and accuracy.
+
+The dataset was split using rsample package of tidyverse.
+
+```{r}
+        library(rsample)
+        
+        set.seed(1234)
+        
+        split_data <- initial_split(clean_data, prop = 2/3)
+        
+        training_data <- training(split_data)
+        testing_data <- testing(split_data)
+```
+
+Feature engineering or recipe was created using recipes package. As there is one outcome variable and all other variable were predictor this step was pretty simple.
+
+```{r message=FALSE}
+        library(recipes)
+        
+        recipe <- training_data %>%
+                recipe(classe ~.)
+        
+        summary(recipe)
+```
+
+Parsnip package was used to decide or set model specifications.
+
+```{r}
+        library(parsnip)
+
+        rf_model <- parsnip::rand_forest() %>%
+             parsnip::set_mode("classification") %>%
+             parsnip::set_engine("randomForest")
+```
+
+Using work flows
+
+```{r}
+        library(workflows)
+
+        rf_wflow <-workflows::workflow() %>%
+                      workflows::add_recipe(recipe) %>%
+                      workflows::add_model(rf_model)
+```
+
+Now using rasample vfold_cv function we will create cross validation.
+
+```{r}
+        vfold <- vfold_cv(data = training_data, v = 4)
+```
+
+Model Fitting using fit_resamples function of tune package.
+
+```{r}
+        library(tune)
+        rf_resample_fit <- fit_resamples(rf_wflow, vfold)
+```
+
+Knowing Accuracy using Collect Metrices function.
+
+```{r}
+        collect_metrics(rf_resample_fit)
+```
+
+Hurray!! using RF we have about 93% accuracy so we are good to go with this model.
+
+## 5. Results
+
+We used our model on initial test dataset to see the results out of sample dataset.
+
+```{r}
+        pred_testing <- predict(fit(rf_wflow, training_data), new_data = testing)
+        
+        pred_testing
+```
